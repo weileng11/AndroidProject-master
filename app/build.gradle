@@ -1,0 +1,262 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion rootProject.ext.compileVersion
+
+    // 使用 JDK 1.8
+    compileOptions {
+        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        // 无痛修改包名：https://www.jianshu.com/p/17327e191d2e
+        applicationId "com.hjq.demo"
+        minSdkVersion 14
+        targetSdkVersion rootProject.ext.targetVersion
+        versionCode 10
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // 仅保留中文语种的资源
+        resConfig 'zh'
+
+        // 仅保留 xxhdpi 图片资源（目前主流分辨率 1920 * 1080）
+        resConfig 'xxhdpi'
+
+        // 仅保留两种架构的 so 库
+        ndk {
+            // armeabi：已经淘汰（0%）
+            // armeabi-v7a：曾经主流的架构平台（20%）
+            // arm64-v8a：目前主流架构平台（80%）
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+
+        // 开启 Dex 分包
+        //multiDexEnabled true
+
+        // 混淆配置
+        proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-app.pro'
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                // EventBus Apt 索引类生成位置
+                arguments = [ eventBusIndex : applicationId + '.MyEventBusIndex' ]
+            }
+        }
+    }
+
+    // APK 签名的那些事：https://www.jianshu.com/p/a1f8e5896aa2
+    signingConfigs {
+        debug {
+            storeFile file(StoreFile)
+            storePassword StorePassword
+            keyAlias KeyAlias
+            keyPassword KeyPassword
+        }
+        release {
+            storeFile file(StoreFile)
+            storePassword StorePassword
+            keyAlias KeyAlias
+            keyPassword KeyPassword
+        }
+    }
+
+    configurations {
+        all*.exclude group: 'com.google.android', module: 'support-v4'
+//        all*.exclude module: 'support-v4'
+    }
+
+    buildTypes {
+        release {
+            // 移除无用的资源文件
+            shrinkResources true
+            // ZipAlign 优化
+            zipAlignEnabled true
+            // 设置混淆
+            minifyEnabled true
+            // 正式环境签名
+            signingConfig signingConfigs.release
+            // 正式环境下的 BuglyId
+            buildConfigField "String", "BUGLY_ID", "\"请自行替换 Bugly 上面的 AppID\""
+        }
+
+        debug {
+            // 移除无用的资源文件
+            shrinkResources false
+            // ZipAlign 优化
+            zipAlignEnabled false
+            // 设置混淆
+            minifyEnabled false
+            // 开发环境签名
+            signingConfig signingConfigs.debug
+            // 开发环境下的 BuglyId
+            buildConfigField "String", "BUGLY_ID", "\"请自行替换 Bugly 上面的 AppID\""
+        }
+    }
+
+    // 默认渠道名
+    flavorDimensions "default"
+    // 友盟多渠道打包
+    productFlavors {
+        tencent {}  // 应用宝
+        baidu {}    // 百度
+        xiaomi {}   // 小米
+        huawei {}   // 华为
+
+        productFlavors.all { flavor ->
+            flavor.manifestPlaceholders = [UMENG_CHANNEL_VALUE: name]
+        }
+    }
+
+    // JNI 目录
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['libs']
+        }
+    }
+
+    // 执行配置
+    applicationVariants.all { variant ->
+
+        // Apk 输出配置
+        variant.outputs.all { output ->
+//            def appName = "AndroidProject"
+            def appName=rootProject.name
+            if (variant.buildType.name == 'debug') {
+                outputFileName = appName + '_v' + versionName + '_' + variant.buildType.name + '.apk'
+            } else {
+                outputFileName = appName + '_v' + versionName + '_' + new Date().format("yyyyMMdd") + '_' + variant.productFlavors[0].name + '_' + variant.buildType.name + '.apk'
+            }
+        }
+
+        // AndroidManifest 输出配置
+        variant.outputs[0].processManifest.doLast {
+            def manifestFile = "${manifestOutputDirectory}/AndroidManifest.xml"
+            def updatedContent = new File(manifestFile).getText('UTF-8')
+                    .replaceAll("UMENG_APPKEY_VALUE", "5cb16d93570df399fd0014e2") // 友盟 AppKey
+                    .replaceAll("QQ_APPID_VALUE", "100424468") // QQ AppId
+                    .replaceAll("QQ_APPKEY_VALUE", "c7394704798a158208a74ab60104f0ba") // QQ Key
+                    .replaceAll("WX_APPID_VALUE", "wxdc1e388c3822c80b") // 微信 AppId
+                    .replaceAll("WX_APPKEY_VALUE", "3baf1193c85774b3fd9d18447d76cab0") // 微信 Key
+            new File(manifestFile).write(updatedContent, 'UTF-8')
+        }
+    }
+
+//    configurations.all {
+//        resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+//            def requested = details.requested
+//            if (requested.group == 'com.android.support') {
+//                if (!requested.name.startsWith("multidex")) {
+//                    details.useVersion '27.1.1'
+//                }
+//            }
+//        }
+//    }
+
+
+    configurations.all {
+        resolutionStrategy {
+            force 'com.android.support:support-v7:27.1.1'
+        }
+    }
+
+}
+
+// api 与 implementation 的区别：https://www.jianshu.com/p/8962d6ba936e
+dependencies {
+
+    // 依赖 libs 目录下所有 jar 包
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+
+    // 依赖 libs 目录下所有 aar 包
+    implementation fileTree(include: ['*.aar'], dir: 'libs')
+
+    // 基础库（不包任何第三方框架）
+    implementation project(':base')
+
+    // 自定义 View
+    implementation project(':widget')
+
+    // Glide 隔离
+    implementation project(':image')
+
+    // 友盟隔离
+    implementation project(':umeng')
+
+    // 谷歌 Support 包
+    implementation "androidx.appcompat:appcompat:$rootProject.ext.appcompatVersion"
+    implementation "com.google.android.material:material:$rootProject.ext.materialVersion"
+
+    //    implementation 'com.android.support:design:27.1.1'
+
+    // Dex 分包，解决 64k 方法问题
+
+    //implementation 'androidx.multidex:multidex:2.0.1'
+
+    // ButterKnife 注解库：https://github.com/JakeWharton/butterknife
+    implementation 'com.jakewharton:butterknife:10.1.0'
+    annotationProcessor 'com.jakewharton:butterknife-compiler:10.1.0'
+
+    // EventBus 事件总线：https://github.com/greenrobot/EventBus
+    implementation 'org.greenrobot:eventbus:3.1.1'
+    annotationProcessor 'org.greenrobot:eventbus-annotation-processor:3.1.1'
+
+    // 状态栏沉浸：https://github.com/gyf-dev/ImmersionBar
+    implementation 'com.gyf.immersionbar:immersionbar:3.0.0'
+
+    // 权限请求框架：https://github.com/getActivity/XXPermissions
+    implementation 'com.hjq:xxpermissions:6.0'
+
+    // 标题栏：https://github.com/getActivity/TitleBar
+    implementation 'com.hjq:titlebar:6.0'
+
+    // 吐司工具类：https://github.com/getActivity/ToastUtils
+    implementation 'com.hjq:toast:8.0'
+
+    // 支持放大缩放的 ImageView：https://github.com/chrisbanes/PhotoView
+    implementation 'com.github.chrisbanes:PhotoView:2.3.0'
+
+    // ViewPager 指示器：https://github.com/romandanylyk/PageIndicatorView
+    implementation 'com.romandanylyk:pageindicatorview:1.0.3'
+
+    // Bugly 异常捕捉：https://bugly.qq.com/docs/user-guide/instruction-manual-android/?v=20190418140644
+    implementation 'com.tencent.bugly:crashreport:3.0.1'
+    implementation 'com.tencent.bugly:nativecrashreport:3.7.1'
+
+    // 本地异常捕捉框架：https://github.com/Ereza/CustomActivityOnCrash
+    implementation 'cat.ereza:customactivityoncrash:2.2.0'
+
+    //    implementation 'cat.ereza:customactivityoncrash:2.2.0'
+
+    //    implementation 'com.android.support:support-v4:27.1.1'
+//    implementation 'com.android.support:support-annotations:27.1.1'
+
+    // 内存泄漏捕捉：https://github.com/square/leakcanary
+    debugImplementation 'com.squareup.leakcanary:leakcanary-android:1.5.4'
+    releaseImplementation 'com.squareup.leakcanary:leakcanary-android-no-op:1.5.4'
+
+    // 网络请求（待发布）：https://github.com/getActivity/EasyHttp
+
+    // 国际化：https://github.com/getActivity/MultiLanguages
+
+    // 悬浮窗：https://github.com/getActivity/XToast
+
+    // 上拉刷新下拉加载：https://github.com/scwang90/SmartRefreshLayout
+
+    // 工具类：https://github.com/Blankj/AndroidUtilCode
+
+    // 轮播图：https://github.com/bingoogolapple/BGABanner-Android
+
+    // 二维码：https://github.com/bingoogolapple/BGAQRCode-Android
+
+    // 第三方支付：https://github.com/getActivity/RxPay
+
+    // Log 打印：https://github.com/elvishew/XLog
+
+    // 图片压缩：https://github.com/Curzibn/Luban
+
+    // 对象存储：https://github.com/leavesC/DoKV
+
+    // 数据注入：https://github.com/JumeiRdGroup/Parceler
+}
